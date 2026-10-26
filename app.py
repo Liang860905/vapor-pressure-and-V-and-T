@@ -1,408 +1,489 @@
 import streamlit as st
 import streamlit.components.v1 as components
 
-st.set_page_config(page_title="蒸氣壓與溫度、容器體積的關係", layout="wide")
+st.set_page_config(page_title="水的三態與飽和蒸氣壓互動模擬", layout="wide")
 
+# 移除 Streamlit 預設過多的上下留白，爭取最大顯示空間
 st.markdown("""
     <style>
-        .block-container { padding-top: 1.5rem; padding-bottom: 1rem; }
+        .block-container { padding-top: 1.2rem; padding-bottom: 1rem; }
     </style>
 """, unsafe_allow_html=True)
 
-st.subheader("蒸氣壓與溫度、容器體積的關係互動模擬")
+st.title("化學教學互動模擬：水的飽和蒸氣壓與動態平衡")
 
-html_code = '''
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<style>
-    * { box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 8px; background: #ffffff; color: #1f2937; }
-    .tabs { display: flex; gap: 10px; margin-bottom: 10px; }
-    .tab-btn { flex: 1; padding: 10px 14px; font-size: 14px; font-weight: 700; border: 2px solid #cbd5e1; border-radius: 8px; background: #f8fafc; color: #475569; cursor: pointer; }
-    .tab-btn.active { background: #eff6ff; border-color: #2563eb; color: #1d4ed8; }
-    .control-bar { background: #f8fafc; padding: 10px 16px; border-radius: 10px; border: 1px solid #e2e8f0; margin-bottom: 10px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-    .quick-btns { display: flex; gap: 6px; flex-wrap: wrap; }
-    .q-btn { background: #e2e8f0; color: #334155; border: none; padding: 6px 10px; border-radius: 6px; font-weight: 600; font-size: 12px; cursor: pointer; }
-    .q-btn:hover { background: #cbd5e1; }
-    .slider-wrap { flex-grow: 1; display: flex; align-items: center; gap: 10px; min-width: 240px; }
-    input[type=range] { flex-grow: 1; height: 6px; cursor: pointer; accent-color: #2563eb; }
-    .metrics-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 10px; }
-    .metric-card { background: #ffffff; padding: 8px 12px; border-radius: 8px; border: 1px solid #e2e8f0; }
-    .metric-title { font-size: 12px; color: #64748b; margin-bottom: 2px; font-weight: 600; }
-    .metric-value { font-size: 18px; font-weight: 700; }
-    .status-banner { grid-column: span 4; padding: 10px 14px; border-radius: 8px; font-size: 13.5px; line-height: 1.45; background: #f0fdf4; border-left: 5px solid #16a34a; }
-    .canvas-grid { display: grid; grid-template-columns: 1.15fr 1fr; gap: 12px; width: 100%; }
-    @media (max-width: 768px) {
-        .canvas-grid { grid-template-columns: 1fr; }
-        .metrics-grid { grid-template-columns: repeat(2, 1fr); }
-        .status-banner { grid-column: span 2; }
-    }
-    .canvas-box { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 10px; display: flex; flex-direction: column; align-items: center; width: 100%; }
-    canvas { width: 100%; height: auto; max-height: 350px; display: block; }
-    .box-title { font-size: 14px; font-weight: 700; color: #334155; margin-bottom: 6px; }
-    .legend-bar { display: flex; gap: 12px; font-size: 12px; color: #475569; margin-top: 6px; flex-wrap: wrap; justify-content: center; }
-    .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 4px; }
-</style>
-</head>
-<body>
+# 使用 Streamlit 內建的分頁切換兩個專案
+tab1, tab2 = st.tabs(["📊 專案一：蒸發與凝結速率動態平衡 (r - t 圖)", "🔥 專案二：蒸氣壓與溫度、容器體積關係 (P-T / P-V 圖)"])
 
-<div class="tabs">
-    <button id="tabTemp" class="tab-btn active" onclick="switchMode('temp')">🔥 (1) 定容，改變溫度 (P - T 圖)</button>
-    <button id="tabVol" class="tab-btn" onclick="switchMode('vol')">🧪 (2) 定溫，改變容器體積 (P - V 圖)</button>
-</div>
-
-<div class="control-bar">
-    <div class="slider-wrap">
-        <span id="sliderTitle" style="font-weight: 700; font-size: 13px;">調整溫度 (T)：</span>
-        <input type="range" id="mainSlider" min="0" max="140" step="0.5" value="25">
-        <span id="sliderValLabel" style="font-weight: 700; min-width: 68px; color: #2563eb;">25.0 °C</span>
-    </div>
-    <div id="quickBtns" class="quick-btns">
-        <button class="q-btn" onclick="setSliderVal(30)">線段① 液氣共存</button>
-        <button class="q-btn" onclick="setSliderVal(80)">★ 液體恰好完全汽化</button>
-        <button class="q-btn" onclick="setSliderVal(120)">線段② 氣體獨存</button>
-    </div>
-</div>
-
-<div class="metrics-grid">
-    <div class="metric-card">
-        <div class="metric-title" id="mTitle1">當前溫度 (T)</div>
-        <div class="metric-value" id="mVal1" style="color: #dc2626;">25.0 °C (298 K)</div>
-    </div>
-    <div class="metric-card">
-        <div class="metric-title">容器內蒸氣壓力 (P)</div>
-        <div class="metric-value" id="mVal2" style="color: #2563eb;">110 mmHg</div>
-    </div>
-    <div class="metric-card">
-        <div class="metric-title">氣相粒子數 / 總水量</div>
-        <div class="metric-value" id="mVal3" style="color: #d97706;">10 / 45 顆</div>
-    </div>
-    <div class="metric-card">
-        <div class="metric-title">殘留液態水量</div>
-        <div class="metric-value" id="mVal4" style="color: #0284c7;">78% (尚有液體)</div>
-    </div>
-    <div class="status-banner" id="statusBanner"></div>
-</div>
-
-<div class="canvas-grid">
-    <div class="canvas-box">
-        <div class="box-title" id="graphTitle">(1) 定容，改變溫度：壓力對溫度關係圖 (P - T 圖)</div>
-        <canvas id="graphCanvas" width="500" height="350"></canvas>
-    </div>
-    <div class="canvas-box">
-        <div class="box-title" id="beakerTitle">定容加熱裝置與粒子動態 (60 FPS)</div>
-        <canvas id="simCanvas" width="400" height="350"></canvas>
-        <div class="legend-bar">
-            <span><span class="dot" style="background:#f59e0b; border:1px solid #b45309;"></span>氣相水蒸氣 H₂O(g)</span>
-            <span><span class="dot" style="background:#0284c7;"></span>液態水 H₂O(l)</span>
-            <span><span class="dot" style="background:#16a34a;"></span>蒸發與凝結動態交換</span>
+with tab1:
+    st.markdown("觀察定溫下密閉容器中，隨時間推進**蒸發速率**與**凝結速率**的變化，以及微觀粒子達動態平衡的實體動畫[cite: 1]。")
+    
+    html_tab1 = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+    <meta charset="utf-8">
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 4px; background: #ffffff; color: #1f2937; }
+        .control-panel { background: #f8fafc; padding: 10px 14px; border-radius: 10px; border: 1px solid #e2e8f0; margin-bottom: 10px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+        .btn { background: #2563eb; color: white; border: none; padding: 6px 14px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 13px; }
+        .btn:hover { background: #1d4ed8; }
+        .btn-reset { background: #64748b; }
+        .slider-wrap { flex-grow: 1; display: flex; align-items: center; gap: 10px; min-width: 240px; }
+        input[type=range] { flex-grow: 1; height: 6px; cursor: pointer; accent-color: #2563eb; }
+        .metrics-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 10px; }
+        .metric-card { background: #ffffff; padding: 8px 12px; border-radius: 8px; border: 1px solid #e2e8f0; }
+        .metric-title { font-size: 11.5px; color: #64748b; margin-bottom: 2px; font-weight: 600; }
+        .metric-value { font-size: 17px; font-weight: 700; }
+        .status-banner { grid-column: span 4; padding: 10px 14px; border-radius: 8px; font-size: 13px; line-height: 1.4; background: #eff6ff; border-left: 5px solid #2563eb; }
+        .canvas-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; width: 100%; }
+        @media (max-width: 768px) { .canvas-grid { grid-template-columns: 1fr; } .metrics-grid { grid-template-columns: repeat(2, 1fr); } .status-banner { grid-column: span 2; } }
+        .canvas-box { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 8px; display: flex; flex-direction: column; align-items: center; width: 100%; }
+        /* 嚴格鎖定畫布比例與高畫質 CSS 顯示大小，解決模糊與壓扁問題 */
+        canvas { width: 100%; max-width: 440px; height: 350px; display: block; }
+        .box-title { font-size: 13.5px; font-weight: 700; color: #334155; margin-bottom: 4px; }
+        .legend-bar { display: flex; gap: 12px; font-size: 11.5px; color: #475569; margin-top: 4px; justify-content: center; flex-wrap: wrap; }
+        .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
+    </style>
+    </head>
+    <body>
+    <div class="control-panel">
+        <button id="playBtn1" class="btn">⏸ 暫停時間</button>
+        <button id="resetBtn1" class="btn btn-reset">🔄 重置 (t=0)</button>
+        <div class="slider-wrap">
+            <span style="font-weight:600; font-size:13px;">時間軸 (t)：</span>
+            <input type="range" id="timeSlider1" min="0" max="10" step="0.05" value="0">
+            <span id="timeLabel1" style="font-weight:700; min-width:45px; color:#2563eb;">0.0 s</span>
         </div>
     </div>
-</div>
+    <div class="metrics-grid">
+        <div class="metric-card"><div class="metric-title">蒸發速率 (r_蒸發)</div><div class="metric-value" style="color:#16a34a;">10.0</div></div>
+        <div class="metric-card"><div class="metric-title">凝結速率 (r_凝結)</div><div class="metric-value" id="rCondVal1" style="color:#ea580c;">0.0</div></div>
+        <div class="metric-card"><div class="metric-title">氣相水蒸氣粒子數</div><div class="metric-value" id="pCountVal1" style="color:#d97706;">0 / 45</div></div>
+        <div class="metric-card"><div class="metric-title">蒸氣壓狀態</div><div class="metric-value" id="pressureVal1" style="color:#2563eb;">0% 飽和</div></div>
+        <div class="status-banner" id="statusBanner1"></div>
+    </div>
+    <div class="canvas-grid">
+        <div class="canvas-box">
+            <div class="box-title">速率對時間關係圖 (r - t 圖)</div>
+            <canvas id="gCanvas1" width="880" height="700"></canvas>
+        </div>
+        <div class="canvas-box">
+            <div class="box-title">密閉容器微觀動態 (60 FPS 實體碰撞)</div>
+            <canvas id="bCanvas1" width="880" height="700"></canvas>
+            <div class="legend-bar">
+                <span><span class="dot" style="background:#f59e0b;"></span>水蒸氣 H₂O(g)</span>
+                <span><span class="dot" style="background:#16a34a;"></span>蒸發 (↑)</span>
+                <span><span class="dot" style="background:#ea580c;"></span>凝結 (↓)</span>
+            </div>
+        </div>
+    </div>
+    <script>
+    const gC1 = document.getElementById('gCanvas1'), gCtx1 = gC1.getContext('2d');
+    const bC1 = document.getElementById('bCanvas1'), bCtx1 = bC1.getContext('2d');
+    gCtx1.scale(2, 2); bCtx1.scale(2, 2); // 2x 高畫質 Retina 縮放，畫面極致清晰不模糊
 
-<script>
-let mode = 'temp';
-const slider = document.getElementById('mainSlider');
-const sliderTitle = document.getElementById('sliderTitle');
-const sliderValLabel = document.getElementById('sliderValLabel');
-const quickBtns = document.getElementById('quickBtns');
-const mTitle1 = document.getElementById('mTitle1');
-const mVal1 = document.getElementById('mVal1');
-const mVal2 = document.getElementById('mVal2');
-const mVal3 = document.getElementById('mVal3');
-const mVal4 = document.getElementById('mVal4');
-const statusBanner = document.getElementById('statusBanner');
-const graphTitle = document.getElementById('graphTitle');
-const beakerTitle = document.getElementById('beakerTitle');
-const gCanvas = document.getElementById('graphCanvas');
-const gCtx = gCanvas.getContext('2d');
-const sCanvas = document.getElementById('simCanvas');
-const sCtx = sCanvas.getContext('2d');
+    let t1 = 0.0, isPlay1 = true;
+    const r_evap1 = 10.0, t_eq1 = 7.0, k1 = 0.45, norm1 = 1 - Math.exp(-k1 * t_eq1), maxP1 = 45;
+    const BL1 = 55, BR1 = 385, BT1 = 35, BB1 = 310;
 
-const TOTAL_PARTICLES = 45, T_CRIT = 80.0, P_CRIT = 450.0;
-const V_CRIT = 6.0, P_SAT_VOL = 380.0;
-
-function getPsat_TempMode(T_c) { return 70 * Math.exp(Math.log(P_CRIT / 70) * (T_c / T_CRIT)); }
-function getP_TempMode(T_c) { return T_c <= T_CRIT ? getPsat_TempMode(T_c) : P_CRIT * ((T_c + 273) / (T_CRIT + 273)); }
-function getP_VolMode(V) { return V <= V_CRIT ? P_SAT_VOL : P_SAT_VOL * (V_CRIT / V); }
-
-let gasParticles = [], liquidParticles = [], effects = [];
-for (let i = 0; i < 65; i++) {
-    liquidParticles.push({ rx: Math.random(), ry: Math.random(), vx: (Math.random() - 0.5) * 0.01, vy: (Math.random() - 0.5) * 0.01 });
-}
-
-function switchMode(newMode) {
-    mode = newMode;
-    document.getElementById('tabTemp').className = mode === 'temp' ? 'tab-btn active' : 'tab-btn';
-    document.getElementById('tabVol').className = mode === 'vol' ? 'tab-btn active' : 'tab-btn';
-    effects = [];
-    if (mode === 'temp') {
-        sliderTitle.textContent = "調整溫度 (T)：";
-        slider.min = 0; slider.max = 140; slider.step = 0.5; slider.value = 30;
-        mTitle1.textContent = "當前溫度 (T)";
-        graphTitle.textContent = "(1) 定容，改變溫度：壓力對溫度關係圖 (P - T 圖)";
-        beakerTitle.textContent = "定容密閉容器與本生燈加熱模擬";
-        quickBtns.innerHTML = `<button class="q-btn" onclick="setSliderVal(30)">線段① 液-氣共存</button><button class="q-btn" onclick="setSliderVal(80)">★ 液體恰好完全汽化</button><button class="q-btn" onclick="setSliderVal(120)">線段② 氣體獨存</button>`;
-    } else {
-        sliderTitle.textContent = "拉動活塞改變容器體積 (V)：";
-        slider.min = 1.5; slider.max = 10.0; slider.step = 0.05; slider.value = 2.0;
-        mTitle1.textContent = "容器體積 (V)";
-        graphTitle.textContent = "(2) 定溫，改變容器體積：壓力對體積關係圖 (P - V 圖)";
-        beakerTitle.textContent = "定溫附活塞汽缸動態模擬 (A ➔ B ➔ C ➔ D)";
-        quickBtns.innerHTML = `<button class="q-btn" onclick="setSliderVal(2.0)">狀態 A</button><button class="q-btn" onclick="setSliderVal(4.0)">狀態 B (液氣共存)</button><button class="q-btn" onclick="setSliderVal(6.0)">★ 狀態 C (恰好完全汽化)</button><button class="q-btn" onclick="setSliderVal(9.0)">狀態 D (氣體獨存)</button>`;
+    function getRC1(time) {
+        if (time <= 0) return 0;
+        if (time >= t_eq1) return r_evap1;
+        return r_evap1 * (1 - Math.exp(-k1 * time)) / norm1;
     }
-}
 
-function setSliderVal(val) { slider.value = val; }
+    let liqP1 = [];
+    for(let i=0; i<60; i++) liqP1.push({x: BL1+15+Math.random()*(BR1-BL1-30), y: 220+Math.random()*(BB1-230), vx:(Math.random()-0.5)*0.6, vy:(Math.random()-0.5)*0.6});
+    let gasP1 = [], eff1 = [];
 
-function getCurrentState() {
-    const val = parseFloat(slider.value);
-    if (mode === 'temp') {
-        const T_c = val, T_k = T_c + 273, P = getP_TempMode(T_c);
-        const n_ratio = Math.min(1.0, (P / T_k) / (P_CRIT / (T_CRIT + 273)));
-        return { T_c, T_k, P, gasCount: Math.round(TOTAL_PARTICLES * n_ratio), liqFraction: Math.max(0, 1.0 - n_ratio), speedMult: Math.sqrt(T_k / 298) * 1.15 };
-    } else {
-        const V = val, P = getP_VolMode(V);
-        const n_ratio = Math.min(1.0, V / V_CRIT);
-        return { V, P, gasCount: Math.round(TOTAL_PARTICLES * n_ratio), liqFraction: Math.max(0, 1.0 - n_ratio), speedMult: 1.0 };
+    function spawnGP1(fromSurf=true, waterY=210) {
+        const x = BL1 + 25 + Math.random()*(BR1 - BL1 - 50);
+        const y = fromSurf ? waterY - 4 : BT1 + 20 + Math.random()*(waterY - BT1 - 35);
+        const angle = -Math.PI/4 - Math.random()*(Math.PI/2);
+        const speed = 2.2 + Math.random()*1.2;
+        gasP1.push({ x, y, vx: fromSurf ? Math.cos(angle)*speed : (Math.random()-0.5)*3, vy: fromSurf ? Math.sin(angle)*speed : (Math.random()-0.5)*3, hGreen: fromSurf ? 25 : 0 });
+        if(fromSurf) eff1.push({x, y: waterY, type:'evap', age:0, maxAge:25});
     }
-}
 
-function updateUI(st) {
-    if (mode === 'temp') {
-        sliderValLabel.textContent = `${st.T_c.toFixed(1)} °C`;
-        mVal1.textContent = `${st.T_c.toFixed(1)} °C (${Math.round(st.T_k)} K)`;
-        mVal2.textContent = `${Math.round(st.P)} mmHg`;
-        mVal3.textContent = `${st.gasCount} / ${TOTAL_PARTICLES} 顆`;
-        mVal4.textContent = st.liqFraction > 0.005 ? `${Math.round(st.liqFraction * 100)}% (尚有液體)` : `0% (完全汽化)`;
-        if (Math.abs(st.T_c - T_CRIT) < 0.8) {
-            statusBanner.style.borderLeftColor = "#dc2626"; statusBanner.style.background = "#fef2f2";
-            statusBanner.innerHTML = "<b>★ 轉折點：液體恰好完全汽化 (T = 80°C)</b> — 最後一滴液態水剛好汽化完畢。若再繼續升溫，將沒有液體可提供蒸發，圖形將轉折為斜直線（理想氣體定律）。";
-        } else if (st.T_c < T_CRIT) {
-            statusBanner.style.borderLeftColor = "#16a34a"; statusBanner.style.background = "#f0fdf4";
-            statusBanner.innerHTML = "<b>線段 ①：液-氣共存（飽和蒸氣壓曲線）</b> — 底部仍有液態水，<b>溫度愈高，飽和蒸氣壓愈大，但兩者非正比（呈曲線上升）</b>。";
+    document.getElementById('timeSlider1').addEventListener('input', e => { t1 = parseFloat(e.target.value); isPlay1 = false; document.getElementById('playBtn1').textContent = "▶ 繼續"; });
+    document.getElementById('playBtn1').addEventListener('click', () => { isPlay1 = !isPlay1; if(isPlay1 && t1>=10) t1=0; document.getElementById('playBtn1').textContent = isPlay1 ? "⏸ 暫停時間" : "▶ 繼續"; });
+    document.getElementById('resetBtn1').addEventListener('click', () => { t1=0; document.getElementById('timeSlider1').value=0; gasP1=[]; eff1=[]; isPlay1=false; document.getElementById('playBtn1').textContent="▶ 開始"; });
+
+    function animate1() {
+        if(isPlay1) { t1 += 0.015; if(t1>10) { t1=10; isPlay1=false; document.getElementById('playBtn1').textContent="▶ 重新播放"; } document.getElementById('timeSlider1').value = t1; }
+        const rc = getRC1(t1), ratio = rc / r_evap1;
+
+        // 更新數據面板
+        document.getElementById('timeLabel1').textContent = t1.toFixed(1) + " s";
+        document.getElementById('rCondVal1').textContent = rc.toFixed(1);
+        const targetC = Math.round(maxP1 * ratio);
+        document.getElementById('pCountVal1').textContent = `${targetC} / ${maxP1}`;
+        document.getElementById('pressureVal1').textContent = `${Math.round(ratio*100)}% 飽和`;
+
+        if(t1 === 0) document.getElementById('statusBanner1').innerHTML = "<b>狀態 ①：初始 (t = 0)</b> — 上方尚無水蒸氣，僅有水分子從液面蒸發（<b>r_蒸發 > 0，r_凝結 = 0</b>）[cite: 1]。";
+        else if(t1 < t_eq1) document.getElementById('statusBanner1').innerHTML = "<b>狀態 ②：未飽和階段</b> — 蒸氣壓上升，凝結速率隨之加快，但蒸發仍大於凝結[cite: 1]。";
+        else document.getElementById('statusBanner1').innerHTML = "<b>狀態 ③：達動態平衡 (r_蒸發 = r_凝結 ≠ 0)</b> — 蒸發與凝結速率相等，粒子數維持固定，此即<b>飽和蒸氣壓</b>[cite: 1]！";
+
+        // 1. 繪製左側曲線圖 (440x350 邏輯坐標)
+        gCtx1.clearRect(0, 0, 440, 350);
+        const ox=45, oy=290, w=375, h=230;
+        gCtx1.strokeStyle="#334155"; gCtx1.lineWidth=2; gCtx1.beginPath();
+        gCtx1.moveTo(ox, oy-h-10); gCtx1.lineTo(ox, oy); gCtx1.lineTo(ox+w+10, oy); gCtx1.stroke();
+        gCtx1.fillStyle="#334155"; gCtx1.font="bold 12px sans-serif"; gCtx1.fillText("速率 (r)", 8, 25); gCtx1.fillText("時間 (t)", ox+w-20, oy+22);
+
+        const eqX = ox + (t_eq1/10)*w;
+        gCtx1.setLineDash([3,3]); gCtx1.strokeStyle="#cbd5e1"; gCtx1.beginPath(); gCtx1.moveTo(eqX, oy-h); gCtx1.lineTo(eqX, oy); gCtx1.stroke(); gCtx1.setLineDash([]);
+        
+        // 趨勢淡線
+        const evapY = oy - (r_evap1/12)*h;
+        gCtx1.strokeStyle="rgba(22,163,74,0.25)"; gCtx1.lineWidth=3; gCtx1.beginPath(); gCtx1.moveTo(ox, evapY); gCtx1.lineTo(ox+w, evapY); gCtx1.stroke();
+        gCtx1.strokeStyle="rgba(234,88,12,0.25)"; gCtx1.beginPath();
+        for(let i=0; i<=80; i++) { let ti=(i/80)*10, rc_i=getRC1(ti); let px=ox+(ti/10)*w, py=oy-(rc_i/12)*h; if(i===0)gCtx1.moveTo(px,py); else gCtx1.lineTo(px,py); }
+        gCtx1.stroke();
+
+        // 實線
+        const curX = ox + (t1/10)*w;
+        gCtx1.strokeStyle="#16a34a"; gCtx1.lineWidth=3; gCtx1.beginPath(); gCtx1.moveTo(ox, evapY); gCtx1.lineTo(curX, evapY); gCtx1.stroke();
+        gCtx1.strokeStyle="#ea580c"; gCtx1.lineWidth=3; gCtx1.beginPath();
+        const steps = Math.max(2, Math.floor(t1*12));
+        for(let i=0; i<=steps; i++) { let ti=(i/steps)*t1, rc_i=getRC1(ti); let px=ox+(ti/10)*w, py=oy-(rc_i/12)*h; if(i===0)gCtx1.moveTo(px,py); else gCtx1.lineTo(px,py); }
+        gCtx1.stroke();
+
+        gCtx1.fillStyle="#16a34a"; gCtx1.beginPath(); gCtx1.arc(curX, evapY, 5, 0, Math.PI*2); gCtx1.fill();
+        gCtx1.fillStyle="#ea580c"; gCtx1.beginPath(); gCtx1.arc(curX, oy - (rc/12)*h, 5, 0, Math.PI*2); gCtx1.fill();
+
+        // 2. 繪製右側微觀容器 (440x350 邏輯坐標)
+        bCtx1.clearRect(0, 0, 440, 350);
+        const waterY = 210 + ratio * 12;
+        while(gasP1.length < Math.round(maxP1 * ratio)) spawnGP1(true, waterY);
+        while(gasP1.length > Math.round(maxP1 * ratio)) gasP1.pop();
+
+        if(Math.random() < 0.08) {
+            if(Math.random() < ratio && gasP1.length > 0) {
+                let m = gasP1.reduce((max, p) => p.y > max.y ? p : max, gasP1[0]);
+                eff1.push({x: m.x, y: waterY, type:'cond', age:0, maxAge:25});
+                gasP1.splice(gasP1.indexOf(m), 1);
+                spawnGP1(true, waterY);
+            } else if(t1 > 0) {
+                eff1.push({x: BL1+30+Math.random()*(BR1-BL1-60), y: waterY, type:'evap', age:0, maxAge:25});
+            }
+        }
+
+        bCtx1.fillStyle = "rgba(56, 189, 248, 0.35)"; bCtx1.fillRect(BL1, waterY, BR1 - BL1, BB1 - waterY);
+        bCtx1.strokeStyle = "#0284c7"; bCtx1.lineWidth = 2; bCtx1.beginPath(); bCtx1.moveTo(BL1, waterY); bCtx1.lineTo(BR1, waterY); bCtx1.stroke();
+
+        // 水中粒子
+        bCtx1.fillStyle = "rgba(2, 132, 199, 0.45)";
+        for(let lp of liqP1) {
+            lp.x += lp.vx; lp.y += lp.vy;
+            if(lp.x < BL1+6 || lp.x > BR1-6) lp.vx *= -1;
+            if(lp.y < waterY+6) lp.y = waterY+6; if(lp.y > BB1-6) lp.y = BB1-6;
+            bCtx1.beginPath(); bCtx1.arc(lp.x, lp.y, 3.5, 0, Math.PI*2); bCtx1.fill();
+        }
+
+        // 氣體粒子
+        for(let p of gasP1) {
+            p.x += p.vx; p.y += p.vy;
+            if(p.x < BL1+6 || p.x > BR1-6) { p.x = Math.max(BL1+6, Math.min(BR1-6, p.x)); p.vx *= -1; }
+            if(p.y < BT1+6) { p.y = BT1+6; p.vy *= -1; }
+            if(p.y > waterY - 6) { p.y = waterY - 6; p.vy *= -1; }
+
+            bCtx1.beginPath(); bCtx1.arc(p.x, p.y, 5.5, 0, Math.PI*2);
+            bCtx1.fillStyle = p.hGreen > 0 ? "#22c55e" : "#f59e0b";
+            bCtx1.strokeStyle = p.hGreen > 0 ? "#15803d" : "#b45309";
+            if(p.hGreen > 0) p.hGreen--;
+            bCtx1.lineWidth = 1.2; bCtx1.fill(); bCtx1.stroke();
+        }
+
+        // 特效
+        for(let i = eff1.length-1; i>=0; i--) {
+            let ef = eff1[i]; ef.age++;
+            let a = 1 - ef.age/ef.maxAge;
+            bCtx1.font = "bold 11px sans-serif";
+            if(ef.type === 'evap') {
+                bCtx1.fillStyle = `rgba(22, 163, 74, ${a})`; bCtx1.fillText("↑蒸發", ef.x-14, ef.y - ef.age*0.7);
+            } else {
+                bCtx1.fillStyle = `rgba(234, 88, 12, ${a})`; bCtx1.fillText("↓凝結", ef.x-14, ef.y + ef.age*0.6+10);
+            }
+            if(ef.age >= ef.maxAge) eff1.splice(i, 1);
+        }
+
+        // 容器框
+        bCtx1.strokeStyle = "#475569"; bCtx1.lineWidth = 3.5; bCtx1.strokeRect(BL1, BT1, BR1 - BL1, BB1 - BT1);
+        bCtx1.fillStyle = "#64748b"; bCtx1.fillRect(BL1 - 10, BT1 - 8, (BR1 - BL1) + 20, 8);
+
+        requestAnimationFrame(animate1);
+    }
+    animate1();
+    </script>
+    </body>
+    </html>
+    """
+    components.html(html_tab1, height=730, scrolling=True)
+
+with tab2:
+    st.markdown("自由切換**「(1) 定容，改變溫度」**與**「(2) 定溫，改變容器體積」**，觀察液-氣共存與完全汽化轉折點[cite: 2]。")
+    
+    html_tab2 = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+    <meta charset="utf-8">
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 4px; background: #ffffff; color: #1f2937; }
+        .tabs-inner { display: flex; gap: 8px; margin-bottom: 8px; }
+        .tab-btn-in { flex: 1; padding: 8px 12px; font-size: 13.5px; font-weight: 700; border: 2px solid #cbd5e1; border-radius: 8px; background: #f8fafc; color: #475569; cursor: pointer; }
+        .tab-btn-in.active { background: #eff6ff; border-color: #2563eb; color: #1d4ed8; }
+        .control-bar { background: #f8fafc; padding: 10px 14px; border-radius: 10px; border: 1px solid #e2e8f0; margin-bottom: 10px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+        .quick-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+        .q-btn { background: #e2e8f0; color: #334155; border: none; padding: 5px 9px; border-radius: 6px; font-weight: 600; font-size: 11.5px; cursor: pointer; }
+        .q-btn:hover { background: #cbd5e1; }
+        .slider-wrap { flex-grow: 1; display: flex; align-items: center; gap: 10px; min-width: 240px; }
+        input[type=range] { flex-grow: 1; height: 6px; cursor: pointer; accent-color: #2563eb; }
+        .metrics-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 10px; }
+        .metric-card { background: #ffffff; padding: 8px 12px; border-radius: 8px; border: 1px solid #e2e8f0; }
+        .metric-title { font-size: 11.5px; color: #64748b; margin-bottom: 2px; font-weight: 600; }
+        .metric-value { font-size: 17px; font-weight: 700; }
+        .status-banner { grid-column: span 4; padding: 10px 14px; border-radius: 8px; font-size: 13px; line-height: 1.4; background: #f0fdf4; border-left: 5px solid #16a34a; }
+        .canvas-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; width: 100%; }
+        @media (max-width: 768px) { .canvas-grid { grid-template-columns: 1fr; } .metrics-grid { grid-template-columns: repeat(2, 1fr); } .status-banner { grid-column: span 2; } }
+        .canvas-box { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 8px; display: flex; flex-direction: column; align-items: center; width: 100%; }
+        canvas { width: 100%; max-width: 440px; height: 350px; display: block; }
+        .box-title { font-size: 13.5px; font-weight: 700; color: #334155; margin-bottom: 4px; }
+        .legend-bar { display: flex; gap: 12px; font-size: 11.5px; color: #475569; margin-top: 4px; justify-content: center; flex-wrap: wrap; }
+        .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
+    </style>
+    </head>
+    <body>
+    <div class="tabs-inner">
+        <button id="tabTemp" class="tab-btn-in active" onclick="switchMode('temp')">🔥 (1) 定容，改變溫度 (P-T 圖)</button>
+        <button id="tabVol" class="tab-btn-in" onclick="switchMode('vol')">🧪 (2) 定溫，改變體積 (P-V 圖)</button>
+    </div>
+    <div class="control-bar">
+        <div class="slider-wrap">
+            <span id="sliderTitle2" style="font-weight:700; font-size:13px;">調整溫度 (T)：</span>
+            <input type="range" id="mainSlider2" min="0" max="140" step="0.5" value="30">
+            <span id="sliderValLabel2" style="font-weight:700; min-width:65px; color:#2563eb;">30.0 °C</span>
+        </div>
+        <div id="quickBtns2" class="quick-btns">
+            <button class="q-btn" onclick="setSVal(30)">線段① 液氣共存</button>
+            <button class="q-btn" onclick="setSVal(80)">★ 完全汽化點</button>
+            <button class="q-btn" onclick="setSVal(120)">線段② 氣體獨存</button>
+        </div>
+    </div>
+    <div class="metrics-grid">
+        <div class="metric-card"><div class="metric-title" id="mTitle1">當前溫度 (T)</div><div class="metric-value" id="mVal1" style="color:#dc2626;">30.0 °C</div></div>
+        <div class="metric-card"><div class="metric-title">蒸氣壓力 (P)</div><div class="metric-value" id="mVal2" style="color:#2563eb;">120 mmHg</div></div>
+        <div class="metric-card"><div class="metric-title">氣相粒子數</div><div class="metric-value" id="mVal3" style="color:#d97706;">12 / 45 顆</div></div>
+        <div class="metric-card"><div class="metric-title">殘留液態水</div><div class="metric-value" id="mVal4" style="color:#0284c7;">73%</div></div>
+        <div class="status-banner" id="statusBanner2"></div>
+    </div>
+    <div class="canvas-grid">
+        <div class="canvas-box">
+            <div class="box-title" id="graphTitle2">壓力對溫度關係圖 (P - T 圖)</div>
+            <canvas id="gCanvas2" width="880" height="700"></canvas>
+        </div>
+        <div class="canvas-box">
+            <div class="box-title" id="simTitle2">定容加熱裝置與粒子動態</div>
+            <canvas id="sCanvas2" width="880" height="700"></canvas>
+            <div class="legend-bar">
+                <span><span class="dot" style="background:#f59e0b;"></span>氣相水蒸氣</span>
+                <span><span class="dot" style="background:#0284c7;"></span>液態水</span>
+                <span><span class="dot" style="background:#16a34a;"></span>動態交換</span>
+            </div>
+        </div>
+    </div>
+    <script>
+    const gC2 = document.getElementById('gCanvas2'), gCtx2 = gC2.getContext('2d');
+    const sC2 = document.getElementById('sCanvas2'), sCtx2 = sC2.getContext('2d');
+    gCtx2.scale(2, 2); sCtx2.scale(2, 2); // Retina 2x 高畫質晶片級渲染
+
+    let mode2 = 'temp';
+    const T_CRIT2 = 80.0, P_CRIT2 = 450.0, V_CRIT2 = 6.0, P_SAT2 = 380.0, TOT_P2 = 45;
+    let liqP2 = [];
+    for(let i=0; i<60; i++) liqP2.push({rx:Math.random(), ry:Math.random(), vx:(Math.random()-0.5)*0.01, vy:(Math.random()-0.5)*0.01});
+    let gasP2 = [], eff2 = [];
+
+    function switchMode(m) {
+        mode2 = m;
+        document.getElementById('tabTemp').className = mode2==='temp'?'tab-btn-in active':'tab-btn-in';
+        document.getElementById('tabVol').className = mode2==='vol'?'tab-btn-in active':'tab-btn-in';
+        eff2 = [];
+        const sl = document.getElementById('mainSlider2');
+        if(mode2==='temp') {
+            document.getElementById('sliderTitle2').textContent = "調整溫度 (T)：";
+            sl.min=0; sl.max=140; sl.step=0.5; sl.value=30;
+            document.getElementById('mTitle1').textContent = "當前溫度 (T)";
+            document.getElementById('graphTitle2').textContent = "壓力對溫度關係圖 (P - T 圖)";
+            document.getElementById('simTitle2').textContent = "定容加熱裝置與粒子動態";
+            document.getElementById('quickBtns2').innerHTML = `<button class="q-btn" onclick="setSVal(30)">線段① 共存</button><button class="q-btn" onclick="setSVal(80)">★ 完全汽化</button><button class="q-btn" onclick="setSVal(120)">線段② 獨存</button>`;
         } else {
-            statusBanner.style.borderLeftColor = "#0284c7"; statusBanner.style.background = "#f0f9ff";
-            statusBanner.innerHTML = "<b>線段 ②：氣體獨存（遵守 PV = nRT）</b> — 液體已完全汽化，n、V 固定，<b>壓力與絕對溫度 T(K) 成正比（延伸虛線通過 -273°C 原點）</b>。";
+            document.getElementById('sliderTitle2').textContent = "容器體積 (V)：";
+            sl.min=1.5; sl.max=10.0; sl.step=0.05; sl.value=2.0;
+            document.getElementById('mTitle1').textContent = "容器體積 (V)";
+            document.getElementById('graphTitle2').textContent = "壓力對體積關係圖 (P - V 圖)";
+            document.getElementById('simTitle2').textContent = "定溫附活塞汽缸動態模擬";
+            document.getElementById('quickBtns2').innerHTML = `<button class="q-btn" onclick="setSVal(2.0)">狀態 A</button><button class="q-btn" onclick="setSVal(4.0)">狀態 B 共存</button><button class="q-btn" onclick="setSVal(6.0)">★ 狀態 C 完全汽化</button><button class="q-btn" onclick="setSVal(9.0)">狀態 D 獨存</button>`;
         }
-    } else {
-        sliderValLabel.textContent = `${st.V.toFixed(2)} L`;
-        mVal1.textContent = `${st.V.toFixed(2)} L`;
-        mVal2.textContent = `${Math.round(st.P)} mmHg`;
-        mVal3.textContent = `${st.gasCount} / ${TOTAL_PARTICLES} 顆`;
-        mVal4.textContent = st.liqFraction > 0.005 ? `${Math.round(st.liqFraction * 100)}% (尚有液體)` : `0% (完全汽化)`;
-        if (Math.abs(st.V - V_CRIT) < 0.12) {
-            statusBanner.style.borderLeftColor = "#dc2626"; statusBanner.style.background = "#fef2f2";
-            statusBanner.innerHTML = "<b>★ 狀態 C：液體恰好完全汽化 (V = 6.0 L)</b> — 活塞拉至此位置時，底部液態水剛好全部變成水蒸氣，壓力仍為飽和蒸氣壓；若再往上拉，壓力將開始下降。";
-        } else if (st.V < V_CRIT) {
-            statusBanner.style.borderLeftColor = "#16a34a"; statusBanner.style.background = "#f0fdf4";
-            statusBanner.innerHTML = "<b>線段 ③ (狀態 A ~ B)：液-氣共存</b> — 當容器體積逐漸變大，仍有液體存在便可液-氣共存達平衡，<b>定溫下的飽和蒸氣壓恆為定值（水平線）</b>。";
+    }
+    function setSVal(v) { document.getElementById('mainSlider2').value = v; }
+
+    function getP_T(tc) {
+        if(tc <= T_CRIT2) return 70 * Math.exp(Math.log(P_CRIT2/70) * (tc/T_CRIT2));
+        return P_CRIT2 * ((tc + 273)/(T_CRIT2 + 273));
+    }
+    function getP_V(v) { return v <= V_CRIT2 ? P_SAT2 : P_SAT2 * (V_CRIT2 / v); }
+
+    function getState2() {
+        const val = parseFloat(document.getElementById('mainSlider2').value);
+        if(mode2==='temp') {
+            const T_c=val, T_k=T_c+273, P=getP_T(T_c);
+            const n_r = Math.min(1.0, (P/T_k) / (P_CRIT2/(T_CRIT2+273)));
+            return {val:T_c, T_k, P, gasCount:Math.round(TOT_P2*n_r), liqFrac:Math.max(0, 1.0-n_r), speed:Math.sqrt(T_k/298)*1.1};
         } else {
-            statusBanner.style.borderLeftColor = "#0284c7"; statusBanner.style.background = "#f0f9ff";
-            statusBanner.innerHTML = "<b>線段 ④ (狀態 C ~ D)：氣體獨存（波以耳定律 PV = 定值）</b> — 液體已耗盡，n、T 固定，<b>體積愈大、壓力愈小（成反比）</b>。";
-        }
-    }
-}
-
-function drawGraph(st) {
-    gCtx.clearRect(0, 0, gCanvas.width, gCanvas.height);
-    if (mode === 'temp') {
-        const ox = 155, zeroK_X = 35, oy = 305, maxT_X = 465, h = 260, maxP = 600;
-        const tToX = tc => tc >= 0 ? ox + (tc / 140) * (maxT_X - ox) : ox + (tc / 273) * (ox - zeroK_X);
-        const pToY = p => oy - (p / maxP) * h;
-
-        gCtx.strokeStyle = "#334155"; gCtx.lineWidth = 2; gCtx.beginPath();
-        gCtx.moveTo(zeroK_X - 10, oy); gCtx.lineTo(maxT_X + 15, oy);
-        gCtx.moveTo(ox, oy - h - 15); gCtx.lineTo(ox, oy); gCtx.stroke();
-
-        gCtx.fillStyle = "#334155"; gCtx.font = "bold 13px sans-serif";
-        gCtx.fillText("壓力 (mmHg)", ox - 85, 28); gCtx.fillText("溫度 (°C)", maxT_X - 50, oy + 30);
-        gCtx.fillText("-273", zeroK_X - 12, oy + 20); gCtx.fillText("0", ox - 4, oy + 20);
-
-        const critX = tToX(T_CRIT), critY = pToY(P_CRIT);
-        gCtx.setLineDash([5, 5]); gCtx.strokeStyle = "#64748b"; gCtx.lineWidth = 1.8;
-        gCtx.beginPath(); gCtx.moveTo(zeroK_X, oy); gCtx.lineTo(critX, critY); gCtx.stroke();
-
-        gCtx.beginPath();
-        for (let tc = T_CRIT; tc <= 105; tc += 2) {
-            let px = tToX(tc), py = pToY(getPsat_TempMode(tc));
-            if (tc === T_CRIT) gCtx.moveTo(px, py); else gCtx.lineTo(px, py);
-        }
-        gCtx.stroke(); gCtx.setLineDash([]);
-
-        gCtx.strokeStyle = "#16a34a"; gCtx.lineWidth = 4; gCtx.beginPath();
-        for (let tc = 0; tc <= T_CRIT; tc += 1) {
-            let px = tToX(tc), py = pToY(getPsat_TempMode(tc));
-            if (tc === 0) gCtx.moveTo(px, py); else gCtx.lineTo(px, py);
-        }
-        gCtx.stroke();
-
-        gCtx.strokeStyle = "#0284c7"; gCtx.lineWidth = 4; gCtx.beginPath();
-        gCtx.moveTo(critX, critY); gCtx.lineTo(tToX(140), pToY(getP_TempMode(140))); gCtx.stroke();
-
-        gCtx.fillStyle = "#dc2626"; gCtx.beginPath(); gCtx.arc(critX, critY, 5.5, 0, Math.PI * 2); gCtx.fill();
-        gCtx.fillStyle = "#1e293b"; gCtx.font = "bold 12px sans-serif";
-        gCtx.fillText("液體恰好完全汽化", critX - 105, critY - 12);
-        gCtx.fillStyle = "#16a34a"; gCtx.fillText("線段① 液-氣共存", ox + 45, oy - 70);
-        gCtx.fillStyle = "#0284c7"; gCtx.fillText("線段② 氣體獨存 (P ∝ T)", critX + 15, critY - 28);
-
-        const curX = tToX(st.T_c), curY = pToY(st.P);
-        gCtx.setLineDash([3, 3]); gCtx.strokeStyle = "#94a3b8"; gCtx.lineWidth = 1.5;
-        gCtx.beginPath(); gCtx.moveTo(curX, oy); gCtx.lineTo(curX, curY); gCtx.moveTo(ox, curY); gCtx.lineTo(curX, curY); gCtx.stroke();
-        gCtx.setLineDash([]);
-        gCtx.fillStyle = "#dc2626"; gCtx.beginPath(); gCtx.arc(curX, curY, 7, 0, Math.PI * 2); gCtx.fill();
-        gCtx.strokeStyle = "#ffffff"; gCtx.lineWidth = 2; gCtx.stroke();
-    } else {
-        const ox = 70, oy = 305, w = 395, h = 255, maxV = 10.5, maxP = 500;
-        const vToX = v => ox + (v / maxV) * w;
-        const pToY = p => oy - (p / maxP) * h;
-
-        gCtx.strokeStyle = "#334155"; gCtx.lineWidth = 2; gCtx.beginPath();
-        gCtx.moveTo(ox, oy - h - 15); gCtx.lineTo(ox, oy); gCtx.lineTo(ox + w + 15, oy); gCtx.stroke();
-
-        gCtx.fillStyle = "#334155"; gCtx.font = "bold 13px sans-serif";
-        gCtx.fillText("壓力 (mmHg)", 10, 28); gCtx.fillText("容器體積 (L)", ox + w - 65, oy + 30);
-
-        const critX = vToX(V_CRIT), satY = pToY(P_SAT_VOL);
-        gCtx.strokeStyle = "#16a34a"; gCtx.lineWidth = 4; gCtx.beginPath();
-        gCtx.moveTo(ox, satY); gCtx.lineTo(critX, satY); gCtx.stroke();
-
-        gCtx.strokeStyle = "#ea580c"; gCtx.lineWidth = 4; gCtx.beginPath();
-        for (let v = V_CRIT; v <= 10.0; v += 0.1) {
-            let px = vToX(v), py = pToY(getP_VolMode(v));
-            if (v === V_CRIT) gCtx.moveTo(px, py); else gCtx.lineTo(px, py);
-        }
-        gCtx.stroke();
-
-        gCtx.fillStyle = "#15803d"; gCtx.font = "bold 12px sans-serif";
-        gCtx.fillText("飽和蒸氣壓", ox - 65, satY + 4);
-        gCtx.fillText("線段③ 液-氣共存 (P 定值)", ox + 35, satY + 24);
-        gCtx.fillStyle = "#c2410c"; gCtx.fillText("線段④ 氣體獨存 (PV = k)", critX + 20, satY + 42);
-
-        const pts = [{ label: 'A', v: 2.0 }, { label: 'B', v: 4.0 }, { label: 'C (恰好完全汽化)', v: 6.0 }, { label: 'D', v: 9.0 }];
-        for (let pt of pts) {
-            let px = vToX(pt.v), py = pToY(getP_VolMode(pt.v));
-            gCtx.fillStyle = "#dc2626"; gCtx.beginPath(); gCtx.arc(px, py, 4.5, 0, Math.PI * 2); gCtx.fill();
-            gCtx.fillStyle = "#334155"; gCtx.font = "bold 12px sans-serif"; gCtx.fillText(pt.label, px - 8, py - 10);
-        }
-
-        const curX = vToX(st.V), curY = pToY(st.P);
-        gCtx.setLineDash([3, 3]); gCtx.strokeStyle = "#94a3b8"; gCtx.lineWidth = 1.5;
-        gCtx.beginPath(); gCtx.moveTo(curX, oy); gCtx.lineTo(curX, curY); gCtx.moveTo(ox, curY); gCtx.lineTo(curX, curY); gCtx.stroke();
-        gCtx.setLineDash([]);
-        gCtx.fillStyle = "#2563eb"; gCtx.beginPath(); gCtx.arc(curX, curY, 7, 0, Math.PI * 2); gCtx.fill();
-        gCtx.strokeStyle = "#ffffff"; gCtx.lineWidth = 2; gCtx.stroke();
-    }
-}
-
-function drawSim(st) {
-    sCtx.clearRect(0, 0, sCanvas.width, sCanvas.height);
-    const B_LEFT = 85, B_RIGHT = 315;
-    let B_TOP, B_BOTTOM;
-    if (mode === 'temp') { B_TOP = 50; B_BOTTOM = 250; }
-    else {
-        B_BOTTOM = 310;
-        const gasHeight = 40 + ((st.V - 1.5) / 8.5) * 205;
-        B_TOP = (B_BOTTOM - 26 * st.liqFraction) - gasHeight;
-    }
-
-    const liqH = (mode === 'temp' ? 42 : 26) * st.liqFraction;
-    const waterY = B_BOTTOM - liqH;
-
-    while (gasParticles.length < st.gasCount) {
-        gasParticles.push({
-            x: B_LEFT + 12 + Math.random() * (B_RIGHT - B_LEFT - 24),
-            y: waterY - 8 - Math.random() * Math.max(10, (waterY - B_TOP - 20)),
-            vx: (Math.random() - 0.5) * 3.2, vy: (Math.random() - 0.5) * 3.2
-        });
-    }
-    while (gasParticles.length > st.gasCount) gasParticles.pop();
-
-    if (st.liqFraction > 0.005) {
-        sCtx.fillStyle = "rgba(56, 189, 248, 0.4)";
-        sCtx.fillRect(B_LEFT, waterY, B_RIGHT - B_LEFT, B_BOTTOM - waterY);
-        sCtx.strokeStyle = "#0284c7"; sCtx.lineWidth = 2.5;
-        sCtx.beginPath(); sCtx.moveTo(B_LEFT, waterY); sCtx.lineTo(B_RIGHT, waterY); sCtx.stroke();
-
-        const activeLiqCount = Math.round(60 * st.liqFraction);
-        sCtx.fillStyle = "rgba(2, 132, 199, 0.55)";
-        for (let i = 0; i < activeLiqCount; i++) {
-            let lp = liquidParticles[i];
-            lp.rx += lp.vx * st.speedMult; lp.ry += lp.vy * st.speedMult;
-            if (lp.rx < 0.05 || lp.rx > 0.95) lp.vx *= -1;
-            if (lp.ry < 0.1 || lp.ry > 0.9) lp.vy *= -1;
-            sCtx.beginPath();
-            sCtx.arc(B_LEFT + lp.rx * (B_RIGHT - B_LEFT), waterY + lp.ry * (B_BOTTOM - waterY), 3.5, 0, Math.PI * 2);
-            sCtx.fill();
-        }
-        if (Math.random() < 0.12 * st.speedMult) {
-            effects.push({ x: B_LEFT + 20 + Math.random() * (B_RIGHT - B_LEFT - 40), y: waterY, type: Math.random() < 0.5 ? 'evap' : 'cond', age: 0 });
+            const V=val, P=getP_V(V);
+            const n_r = Math.min(1.0, V/V_CRIT2);
+            return {val:V, P, gasCount:Math.round(TOT_P2*n_r), liqFrac:Math.max(0, 1.0-n_r), speed:1.0};
         }
     }
 
-    for (let p of gasParticles) {
-        p.x += p.vx * st.speedMult; p.y += p.vy * st.speedMult;
-        if (p.x < B_LEFT + 6) { p.x = B_LEFT + 6; p.vx = Math.abs(p.vx); }
-        if (p.x > B_RIGHT - 6) { p.x = B_RIGHT - 6; p.vx = -Math.abs(p.vx); }
-        if (p.y < B_TOP + 6) { p.y = B_TOP + 6; p.vy = Math.abs(p.vy); }
-        if (p.y > waterY - 6) { p.y = waterY - 6; p.vy = -Math.abs(p.vy); }
+    function animate2() {
+        const st = getState2();
 
-        sCtx.beginPath(); sCtx.arc(p.x, p.y, 5.5, 0, Math.PI * 2);
-        sCtx.fillStyle = "#f59e0b"; sCtx.strokeStyle = "#b45309"; sCtx.lineWidth = 1.5;
-        sCtx.fill(); sCtx.stroke();
-    }
-
-    for (let i = effects.length - 1; i >= 0; i--) {
-        let ef = effects[i]; ef.age++;
-        let alpha = 1 - ef.age / 22;
-        sCtx.font = "bold 11px sans-serif";
-        if (ef.type === 'evap') {
-            sCtx.fillStyle = `rgba(22, 163, 74, ${alpha})`; sCtx.fillText("↑蒸發", ef.x - 14, ef.y - ef.age * 0.8);
+        // 介面文字更新
+        if(mode2==='temp') {
+            document.getElementById('sliderValLabel2').textContent = st.val.toFixed(1) + " °C";
+            document.getElementById('mVal1').textContent = st.val.toFixed(1) + " °C";
+            document.getElementById('mVal2').textContent = Math.round(st.P) + " mmHg";
+            document.getElementById('mVal3').textContent = `${st.gasCount} / 45 顆`;
+            document.getElementById('mVal4').textContent = st.liqFrac>0.005 ? `${Math.round(st.liqFrac*100)}%` : `0% (完汽)`;
+            
+            if(Math.abs(st.val - T_CRIT2) < 0.8) document.getElementById('statusBanner2').innerHTML = "<b>★ 轉折點：液體恰好完全汽化 (80°C)</b> — 最後一滴液態水剛好蒸發完畢，之後轉為斜直線[cite: 2]。";
+            else if(st.val < T_CRIT2) document.getElementById('statusBanner2').innerHTML = "<b>線段 ①：液-氣共存</b> — 溫度愈高，飽和蒸氣壓愈大（非正比曲線上升）[cite: 2]。";
+            else document.getElementById('statusBanner2').innerHTML = "<b>線段 ②：氣體獨存</b> — 遵守理想氣體定律，壓力與絕對溫度成正比[cite: 2]。";
         } else {
-            sCtx.fillStyle = `rgba(234, 88, 12, ${alpha})`; sCtx.fillText("↓凝結", ef.x - 14, ef.y + ef.age * 0.6 + 8);
+            document.getElementById('sliderValLabel2').textContent = st.val.toFixed(2) + " L";
+            document.getElementById('mVal1').textContent = st.val.toFixed(2) + " L";
+            document.getElementById('mVal2').textContent = Math.round(st.P) + " mmHg";
+            document.getElementById('mVal3').textContent = `${st.gasCount} / 45 顆`;
+            document.getElementById('mVal4').textContent = st.liqFrac>0.005 ? `${Math.round(st.liqFrac*100)}%` : `0% (完汽)`;
+
+            if(Math.abs(st.val - V_CRIT2) < 0.12) document.getElementById('statusBanner2').innerHTML = "<b>★ 狀態 C：恰好完全汽化 (6.0 L)</b> — 液態水剛好全變成蒸氣[cite: 2]。";
+            else if(st.val < V_CRIT2) document.getElementById('statusBanner2').innerHTML = "<b>線段 ③：液-氣共存</b> — 只要有液體存在，定溫下飽和蒸氣壓恆為定值[cite: 2]。";
+            else document.getElementById('statusBanner2').innerHTML = "<b>線段 ④：氣體獨存</b> — 遵守波以耳定律，體積愈大壓力愈小[cite: 2]。";
         }
-        if (ef.age >= 22) effects.splice(i, 1);
+
+        // 1. 繪製左側圖表 (440x350 邏輯坐標)
+        gCtx2.clearRect(0,0,440,350);
+        if(mode2==='temp') {
+            const ox=135, zX=30, oy=290, mX=420, h=240, maxP=600;
+            const tX = tc => tc>=0 ? ox + (tc/140)*(mX-ox) : ox + (tc/273)*(ox-zX);
+            const pY = p => oy - (p/maxP)*h;
+
+            gCtx2.strokeStyle="#334155"; gCtx2.lineWidth=2; gCtx2.beginPath();
+            gCtx2.moveTo(zX-5, oy); gCtx2.lineTo(mX+10, oy); gCtx2.moveTo(ox, oy-h-15); gCtx2.lineTo(ox, oy); gCtx2.stroke();
+            gCtx2.fillStyle="#334155"; gCtx2.font="bold 11.5px sans-serif";
+            gCtx2.fillText("壓力", ox-45, 20); gCtx2.fillText("溫度 (°C)", mX-45, oy+22);
+            gCtx2.fillText("-273°C", zX-12, oy+18); gCtx2.fillText("0", ox-4, oy+18);
+
+            const cX = tX(T_CRIT2), cY = pY(P_CRIT2);
+            gCtx2.setLineDash([4,4]); gCtx2.strokeStyle="#64748b"; gCtx2.beginPath(); gCtx2.moveTo(zX, oy); gCtx2.lineTo(cX, cY); gCtx2.stroke(); gCtx2.setLineDash([]);
+
+            // 線段①
+            gCtx2.strokeStyle="#16a34a"; gCtx2.lineWidth=3.5; gCtx2.beginPath();
+            for(let tc=0; tc<=T_CRIT2; tc+=1) { let px=tX(tc), py=pY(getP_T(tc)); if(tc===0)gCtx2.moveTo(px,py); else gCtx2.lineTo(px,py); }
+            gCtx2.stroke();
+            // 線段②
+            gCtx2.strokeStyle="#0284c7"; gCtx2.lineWidth=3.5; gCtx2.beginPath();
+            gCtx2.moveTo(cX, cY); gCtx2.lineTo(tX(140), pY(getP_T(140))); gCtx2.stroke();
+
+            // 當前點
+            const curX = tX(st.val), curY = pY(st.P);
+            gCtx2.fillStyle="#dc2626"; gCtx2.beginPath(); gCtx2.arc(curX, curY, 6, 0, Math.PI*2); gCtx2.fill();
+            gCtx2.strokeStyle="#fff"; gCtx2.lineWidth=2; gCtx2.stroke();
+        } else {
+            const ox=55, oy=290, w=365, h=230, maxV=10.5, maxP=500;
+            const vX = v => ox + (v/maxV)*w;
+            const pY = p => oy - (p/maxP)*h;
+
+            gCtx2.strokeStyle="#334155"; gCtx2.lineWidth=2; gCtx2.beginPath();
+            gCtx2.moveTo(ox, oy-h-15); gCtx2.lineTo(ox, oy); gCtx2.lineTo(ox+w+10, oy); gCtx2.stroke();
+            gCtx2.fillStyle="#334155"; gCtx2.font="bold 11.5px sans-serif";
+            gCtx2.fillText("壓力", 10, 20); gCtx2.fillText("體積 (L)", ox+w-45, oy+22);
+
+            const cX = vX(V_CRIT2), sY = pY(P_SAT2);
+            // 線段③
+            gCtx2.strokeStyle="#16a34a"; gCtx2.lineWidth=3.5; gCtx2.beginPath(); gCtx2.moveTo(ox, sY); gCtx2.lineTo(cX, sY); gCtx2.stroke();
+            // 線段④
+            gCtx2.strokeStyle="#ea580c"; gCtx2.lineWidth=3.5; gCtx2.beginPath();
+            for(let v=V_CRIT2; v<=10; v+=0.1) { let px=vX(v), py=pY(getP_V(v)); if(v===V_CRIT2)gCtx2.moveTo(px,py); else gCtx2.lineTo(px,py); }
+            gCtx2.stroke();
+
+            // 當前點
+            const curX = vX(st.val), curY = pY(st.P);
+            gCtx2.fillStyle="#2563eb"; gCtx2.beginPath(); gCtx2.arc(curX, curY, 6, 0, Math.PI*2); gCtx2.fill();
+            gCtx2.strokeStyle="#fff"; gCtx2.lineWidth=2; gCtx2.stroke();
+        }
+
+        // 2. 繪製右側微觀容器 (440x350 邏輯坐標)
+        sCtx2.clearRect(0,0,440,350);
+        const BL=85, BR=315;
+        let BT=45, BB=290;
+        if(mode2==='vol') {
+            const gH = 45 + ((st.val - 1.5)/8.5)*175;
+            BT = (290 - 24*st.liqFrac) - gH;
+        }
+        const waterY = BB - 24*st.liqFrac;
+
+        while(gasP2.length < st.gasCount) {
+            gasP2.push({x:BL+15+Math.random()*(BR-BL-30), y:waterY-10-Math.random()*25, vx:(Math.random()-0.5)*3, vy:(Math.random()-0.5)*3});
+        }
+        while(gasP2.length > st.gasCount) gasP2.pop();
+
+        if(st.liqFrac > 0.005) {
+            sCtx2.fillStyle="rgba(56, 189, 248, 0.4)"; sCtx2.fillRect(BL, waterY, BR-BL, BB-waterY);
+            sCtx2.strokeStyle="#0284c7"; sCtx2.lineWidth=2; sCtx2.beginPath(); sCtx2.moveTo(BL, waterY); sCtx2.lineTo(BR, waterY); sCtx2.stroke();
+
+            sCtx2.fillStyle="rgba(2, 132, 199, 0.55)";
+            for(let i=0; i<Math.round(50*st.liqFrac); i++) {
+                let lp = liqP2[i];
+                lp.rx += lp.vx*st.speed; lp.ry += lp.vy*st.speed;
+                if(lp.rx<0.05||lp.rx>0.95)lp.vx*=-1; if(lp.ry<0.1||lp.ry>0.9)lp.vy*=-1;
+                sCtx2.beginPath(); sCtx2.arc(BL + lp.rx*(BR-BL), waterY + lp.ry*(BB-waterY), 3, 0, Math.PI*2); sCtx2.fill();
+            }
+        }
+
+        for(let p of gasP2) {
+            p.x += p.vx*st.speed; p.y += p.vy*st.speed;
+            if(p.x < BL+6 || p.x > BR-6) { p.x = Math.max(BL+6, Math.min(BR-6, p.x)); p.vx *= -1; }
+            if(p.y < BT+6) { p.y = BT+6; p.vy *= -1; }
+            if(p.y > waterY-6) { p.y = waterY-6; p.vy *= -1; }
+
+            sCtx2.beginPath(); sCtx2.arc(p.x, p.y, 5, 0, Math.PI*2);
+            sCtx2.fillStyle="#f59e0b"; sCtx2.strokeStyle="#b45309"; sCtx2.lineWidth=1.2;
+            sCtx2.fill(); sCtx2.stroke();
+        }
+
+        if(mode2==='temp') {
+            sCtx2.strokeStyle="#475569"; sCtx2.lineWidth=3.5; sCtx2.strokeRect(BL, BT, BR-BL, BB-BT);
+            sCtx2.fillStyle="#64748b"; sCtx2.fillRect(BL-8, BT-8, (BR-BL)+16, 8);
+            // 本生燈
+            sCtx2.fillStyle="#475569"; sCtx2.fillRect(188, 292, 24, 25);
+            sCtx2.fillStyle="rgba(239,68,68,0.85)"; sCtx2.beginPath(); sCtx2.moveTo(182, 292); sCtx2.quadraticCurveTo(200, 260, 218, 292); sCtx2.fill();
+        } else {
+            sCtx2.strokeStyle="#475569"; sCtx2.lineWidth=3.5; sCtx2.beginPath(); sCtx2.moveTo(BL, 40); sCtx2.lineTo(BL, BB); sCtx2.lineTo(BR, BB); sCtx2.lineTo(BR, 40); sCtx2.stroke();
+            sCtx2.fillStyle="#94a3b8"; sCtx2.fillRect(BL+2, BT-12, BR-BL-4, 12);
+            sCtx2.fillStyle="#64748b"; sCtx2.fillRect(194, 12, 12, BT-20);
+        }
+
+        requestAnimationFrame(animate2);
     }
-
-    if (mode === 'temp') {
-        sCtx.strokeStyle = "#475569"; sCtx.lineWidth = 4;
-        sCtx.strokeRect(B_LEFT, B_TOP, B_RIGHT - B_LEFT, B_BOTTOM - B_TOP);
-        sCtx.fillStyle = "#64748b"; sCtx.fillRect(B_LEFT - 10, B_TOP - 8, B_RIGHT - B_LEFT + 20, 8);
-
-        sCtx.strokeStyle = "#64748b"; sCtx.lineWidth = 3; sCtx.beginPath();
-        sCtx.moveTo(B_LEFT - 20, B_BOTTOM + 3); sCtx.lineTo(B_RIGHT + 20, B_BOTTOM + 3);
-        sCtx.moveTo(B_LEFT + 10, B_BOTTOM + 3); sCtx.lineTo(B_LEFT - 10, 338);
-        sCtx.moveTo(B_RIGHT - 10, B_BOTTOM + 3); sCtx.lineTo(B_RIGHT + 10, 338); sCtx.stroke();
-
-        sCtx.fillStyle = "#475569"; sCtx.fillRect(188, 300, 24, 34); sCtx.fillRect(165, 332, 70, 8);
-
-        const flameH = 12 + (st.T_c / 140) * 32 + Math.sin(Date.now() * 0.02) * 3;
-        sCtx.fillStyle = "rgba(239, 68, 68, 0.85)"; sCtx.beginPath();
-        sCtx.moveTo(182, 300); sCtx.quadraticCurveTo(200, 300 - flameH * 1.4, 218, 300); sCtx.fill();
-        sCtx.fillStyle = "rgba(250, 204, 21, 0.9)"; sCtx.beginPath();
-        sCtx.moveTo(190, 300); sCtx.quadraticCurveTo(200, 300 - flameH * 0.8, 210, 300); sCtx.fill();
-    } else {
-        const CYL_TOP = 30;
-        sCtx.strokeStyle = "#475569"; sCtx.lineWidth = 4; sCtx.beginPath();
-        sCtx.moveTo(B_LEFT, CYL_TOP); sCtx.lineTo(B_LEFT, B_BOTTOM); sCtx.lineTo(B_RIGHT, B_BOTTOM); sCtx.lineTo(B_RIGHT, CYL_TOP); sCtx.stroke();
-        sCtx.fillStyle = "#94a3b8"; sCtx.strokeStyle = "#334155"; sCtx.lineWidth = 2;
-        sCtx.fillRect(B_LEFT + 2, B_TOP - 14, B_RIGHT - B_LEFT - 4, 14);
-        sCtx.strokeRect(B_LEFT + 2, B_TOP - 14, B_RIGHT - B_LEFT - 4, 14);
-        sCtx.fillStyle = "#64748b"; sCtx.fillRect(194, 8, 12, B_TOP - 22); sCtx.fillRect(170, 6, 60, 6);
-    }
-}
-
-function animate() {
-    const st = getCurrentState();
-    updateUI(st); drawGraph(st); drawSim(st);
-    requestAnimationFrame(animate);
-}
-animate();
-</script>
-</body>
-</html>
-'''
-
-components.html(html_code, height=800, scrolling=True)
+    animate2();
+    </script>
+    </body>
+    </html>
+    """
+    components.html(html_tab2, height=730, scrolling=True)
