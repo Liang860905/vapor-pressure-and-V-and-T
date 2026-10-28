@@ -80,7 +80,7 @@ with tab1:
         <div class="metric-card"><div class="metric-title">蒸發速率 (r_蒸發)</div><div class="metric-value" style="color:#16a34a;">10.0 <span style="font-size:12px;font-weight:normal;color:#64748b;">(定溫恆定)</span></div></div>
         <div class="metric-card"><div class="metric-title">凝結速率 (r_凝結)</div><div class="metric-value" id="rCondVal1" style="color:#ea580c;">0.0</div></div>
         <div class="metric-card"><div class="metric-title">氣相水蒸氣粒子數</div><div class="metric-value" id="pCountVal1" style="color:#d97706;">0 / 45</div></div>
-        <div class="metric-card"><div class="metric-title">蒸氣壓狀態</div><div class="metric-value" id="pressureVal1" style="color:#2563eb;">0% 飽直</div></div>
+        <div class="metric-card"><div class="metric-title">蒸氣壓狀態</div><div class="metric-value" id="pressureVal1" style="color:#2563eb;">0% 飽和</div></div>
         <div class="status-banner" id="statusBanner1"></div>
     </div>
     <div class="canvas-grid">
@@ -767,6 +767,156 @@ with tab3:
     T_k = T_c + 273
     n_total = W / 18.0
     P_theo = (n_total * R * T_k) / V
+    P_act = min(P_theo, Pv0)
+    n_gas = (P_act * V) / (R * T_k)
+    n_liq = max(0, n_total - n_gas)
+    W_liq = n_liq * 18.0
+
+    # 插入專案三的動畫畫布
+    html_tab3 = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+    <meta charset="utf-8">
+    <style>
+        body {{ margin: 0; padding: 0; font-family: 'Microsoft JhengHei', sans-serif; }}
+        .canvas-wrap {{ width: 100%; border: 1px solid #e2e8f0; border-radius: 10px; padding: 10px; background: #fff; display: flex; justify-content: center; }}
+        canvas {{ width: 100%; max-width: 440px; height: 330px; display: block; }}
+    </style>
+    </head>
+    <body>
+    <div class="canvas-wrap">
+        <canvas id="cCanvas3" width="880" height="660"></canvas>
+    </div>
+    <script>
+        const ctx = document.getElementById('cCanvas3').getContext('2d');
+        ctx.scale(2, 2);
+
+        const n_tot = {n_total};
+        const n_gas = {n_gas};
+        const Ptheo = {P_theo};
+        const Pact = {P_act};
+        const Pv0 = {Pv0};
+        const W_liq = {W_liq};
+
+        const N_tot = Math.min(200, Math.max(30, Math.round(n_tot * 500)));
+        let target_N_gas = Math.round((n_gas / n_tot) * N_tot);
+        if (n_gas >= n_tot * 0.999) target_N_gas = N_tot;
+
+        const BL = 100, BR = 340, BT = 120, BB = 290;
+        let gasP = [], liqP = [], fallP = [];
+        let state = 0; // 0: theo, 1: trans, 2: eq
+        let frame = 0;
+        let cur_P = Ptheo;
+
+        for(let i=0; i<N_tot; i++) {{
+            gasP.push({{
+                x: BL + 20 + Math.random() * (BR - BL - 40),
+                y: BT + 20 + Math.random() * (BB - BT - 40),
+                vx: (Math.random() - 0.5) * 8,
+                vy: (Math.random() - 0.5) * 8
+            }});
+        }}
+
+        function animate() {{
+            frame++;
+            if (state === 0 && frame > 90) {{
+                if (target_N_gas < N_tot) state = 1;
+                else state = 2;
+            }}
+
+            if (state === 1) {{
+                if (frame % 3 === 0 && gasP.length > target_N_gas) {{
+                    let p = gasP.pop();
+                    fallP.push({{x: p.x, y: p.y, vy: 12}});
+                }}
+                cur_P += (Pact - cur_P) * 0.04;
+                if (gasP.length === target_N_gas && fallP.length === 0) {{
+                    state = 2;
+                    cur_P = Pact;
+                }}
+            }}
+
+            ctx.clearRect(0, 0, 440, 330);
+
+            // 背景文字
+            ctx.fillStyle = "#334155";
+            ctx.font = "bold 14px sans-serif";
+            ctx.fillText("📌 參數：{W}g 水 於 {V}L 容器", 100, 30);
+            ctx.fillText("溫度：{T_c}°C", 270, 30);
+
+            ctx.font = "bold 16px sans-serif";
+            if (state === 0) {{
+                ctx.fillStyle = "#dc2626";
+                ctx.fillText(`壓力 P = ${{cur_P.toFixed(3)}} atm (理論全氣化)`, 90, 80);
+            }} else if (state === 1) {{
+                ctx.fillStyle = "#ea580c";
+                ctx.fillText(`P > P_v^0，超過飽和蒸氣壓，開始凝結...`, 90, 80);
+            }} else {{
+                ctx.fillStyle = "#16a34a";
+                if (target_N_gas < N_tot) {{
+                    ctx.fillText(`實際平衡 P = ${{cur_P.toFixed(3)}} atm (氣液共存)`, 90, 80);
+                    ctx.font = "14px sans-serif";
+                    ctx.fillText(`殘留液態水: ${{W_liq.toFixed(2)}} g`, 150, 105);
+                }} else {{
+                    ctx.fillText(`實際平衡 P = ${{cur_P.toFixed(3)}} atm (未飽和氣態)`, 90, 80);
+                }}
+            }}
+
+            // 畫水
+            let cur_liq_h = (liqP.length / N_tot) * 60; 
+            let waterY = BB - cur_liq_h;
+            if (liqP.length > 0) {{
+                ctx.fillStyle = "rgba(56, 189, 248, 0.4)";
+                ctx.fillRect(BL, waterY, BR-BL, cur_liq_h);
+                ctx.strokeStyle = "#0284c7"; ctx.lineWidth = 1.5;
+                ctx.beginPath(); ctx.moveTo(BL, waterY); ctx.lineTo(BR, waterY); ctx.stroke();
+            }}
+
+            // 畫氣體
+            ctx.fillStyle = "#f59e0b";
+            for (let p of gasP) {{
+                p.x += p.vx; p.y += p.vy;
+                if(p.x < BL+8 || p.x > BR-8) p.vx *= -1;
+                if(p.y < BT+8) p.y = BT+8, p.vy *= -1;
+                if(p.y > waterY-8) p.y = waterY-8, p.vy *= -1;
+                ctx.beginPath(); ctx.arc(p.x, p.y, 4, 0, Math.PI*2); ctx.fill();
+            }}
+
+            // 畫掉落
+            ctx.fillStyle = "#ea580c";
+            for (let i = fallP.length-1; i >= 0; i--) {{
+                let p = fallP[i];
+                p.y += p.vy;
+                ctx.beginPath(); ctx.arc(p.x, p.y, 4.5, 0, Math.PI*2); ctx.fill();
+                if (p.y >= waterY) {{
+                    fallP.splice(i, 1);
+                    liqP.push({{x: p.x, y: p.y, vx: (Math.random()-0.5)*1.5, vy: (Math.random()-0.5)*1.5}});
+                }}
+            }}
+
+            // 畫液體
+            ctx.fillStyle = "#0284c7";
+            for (let p of liqP) {{
+                p.x += p.vx; p.y += p.vy;
+                if(p.x < BL+6 || p.x > BR-6) p.vx *= -1;
+                if(p.y < waterY+6) p.y = waterY+6, p.vy *= -1;
+                if(p.y > BB-6) p.y = BB-6, p.vy *= -1;
+                ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, Math.PI*2); ctx.fill();
+            }}
+
+            // 畫框
+            ctx.strokeStyle = "#475569"; ctx.lineWidth = 3;
+            ctx.strokeRect(BL, BT, BR-BL, BB-BT);
+
+            requestAnimationFrame(animate);
+        }}
+        animate();
+    </script>
+    </body>
+    </html>
+    """
+    components.html(html_tab3, height=360, scrolling=False)
 
     st.markdown("#### 📝 步驟一：假設完全汽化，計算理論壓力 $P$")
     with st.container():
@@ -785,10 +935,6 @@ with tab3:
         st.markdown("#### 💧 步驟三：計算殘留液態水量")
         with st.container():
             st.markdown('<div class="step-box">', unsafe_allow_html=True)
-            n_gas = (Pv0 * V) / (R * T_k)
-            n_liq = n_total - n_gas
-            W_liq = n_liq * 18.0
-            
             st.markdown("1. 利用飽和蒸氣壓反推平衡時的「氣態水莫耳數」：")
             st.latex(rf"n_{{氣}} = \frac{{P_v^0 V}}{{RT}} = \frac{{{Pv0:.3f} \times {V}}}{{0.082 \times {T_k}}} = {n_gas:.4f} \text{{ mol}}")
             st.markdown("2. 總莫耳數減去氣態莫耳數，得出「液態水殘留量」：")
@@ -805,6 +951,4 @@ with tab3:
         st.success(f"**判斷結果： 理論壓力 $P ({P_theo:.4f}\text{{ atm}}) < P_v^0 ({Pv0:.3f}\text{{ atm}})$**")
         st.markdown(f'<div class="rule-box">表示<b>僅有氣體 (未飽和)</b>，水已完全汽化，實際壓力為計算所得之 $P = {P_theo:.4f}\text{{ atm}}$[cite: 5]。</div>', unsafe_allow_html=True)
         st.markdown("#### 💧 殘留液態水量： **0 g**")
-```<ElicitationsGroup>
-  <FollowUp label="是否需要協助加入更多關於其他氣體（如乙醚）的參數供測試？" query="請問是否可以新增不同液體（例如乙醚、酒精）的飽和蒸氣壓與分子量選項供計算測試？"/>
-</ElicitationsGroup>
+```<FollowUp label="是否需要在專案三加入『重新播放動畫』的按鈕，方便學生重複觀察凝結過程？" query="請問可以幫我在專案三的動畫區加上重新播放的按鈕嗎？"/>
