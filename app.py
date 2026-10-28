@@ -951,4 +951,3 @@ with tab3:
         st.success(f"**判斷結果： 理論壓力 $P ({P_theo:.4f}\text{{ atm}}) < P_v^0 ({Pv0:.3f}\text{{ atm}})$**")
         st.markdown(f'<div class="rule-box">表示<b>僅有氣體 (未飽和)</b>，水已完全汽化，實際壓力為計算所得之 $P = {P_theo:.4f}\text{{ atm}}$[cite: 5]。</div>', unsafe_allow_html=True)
         st.markdown("#### 💧 殘留液態水量： **0 g**")
-```<FollowUp label="是否需要在專案三加入『重新播放動畫』的按鈕，方便學生重複觀察凝結過程？" query="請問可以幫我在專案三的動畫區加上重新播放的按鈕嗎？"/>
